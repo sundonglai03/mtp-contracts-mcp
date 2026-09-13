@@ -1,0 +1,22 @@
+# 测试用例规范系统（独立部署，不与 mtp-platform 共用 compose）
+services:
+  contracts-mcp:
+    build: .
+    image: mtp-contracts-mcp:0.1.0
+    ports:
+      - "8000:8000"
+    environment:
+      MTP_CONTRACTS_MCP_HOST: 0.0.0.0
+      MTP_CONTRACTS_MCP_PORT: "8000"
+    # MCP 端点： http://<host>:8000/mcp   ；探活： /health
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
