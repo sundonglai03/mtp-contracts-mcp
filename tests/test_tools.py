@@ -2,25 +2,43 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from mtp_contracts_mcp import tools
 
-CASES = Path(__file__).resolve().parent / "cases"
+VALID_CASE = {
+    "schema_version": 1,
+    "id": "OK-1",
+    "title": "valid",
+    "steps": [{"id": "s1", "action": "playwright.snapshot"}],
+}
 
+MISSING_STEPS = {
+    "schema_version": 1,
+    "id": "BAD-1",
+    "title": "missing steps",
+}
 
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+UNDECLARED_REF = {
+    "schema_version": 1,
+    "id": "BAD-REF",
+    "title": "undeclared reference",
+    "steps": [
+        {
+            "id": "s1",
+            "action": "api.get",
+            "args": {"url": "{{ vars.undefined }}"},
+        }
+    ],
+}
 
 
 def test_validate_valid_case_ok():
-    result = tools.validate_one(_read(CASES / "valid" / "web-login.yaml"))
+    result = tools.validate_one(VALID_CASE)
     assert result["ok"], result["issues"]
     assert result["issue_count"] == 0
 
 
 def test_validate_invalid_case_has_paths():
-    result = tools.validate_one(_read(CASES / "invalid" / "missing-steps.yaml"))
+    result = tools.validate_one(MISSING_STEPS)
     assert not result["ok"]
     assert result["issues"]
     assert all(i["path"] for i in result["issues"])
@@ -39,8 +57,8 @@ def test_validate_accepts_dict_input():
 def test_validate_suite_aggregates():
     suite = tools.validate_many(
         [
-            _read(CASES / "valid" / "web-login.yaml"),
-            _read(CASES / "invalid" / "undeclared-ref.yaml"),
+            VALID_CASE,
+            UNDECLARED_REF,
         ]
     )
     assert suite["total"] == 2

@@ -75,15 +75,11 @@ uv run --frozen mtp-contracts-mcp --host 0.0.0.0 --port 8000
 
 Compose 为方便内网访问设置了 `MTP_CONTRACTS_MCP_ALLOWED_HOSTS=off`。跨不可信网络时，应启用令牌，并在反向代理上配置 HTTPS 和明确的 Host 白名单。
 
-## contracts 维护
+## contracts 依赖
 
-契约源码位于 `src/mtp_contracts_mcp/contracts/`，它是唯一事实来源。修改后同步到相邻的 `mtp-platform`：
-
-```bash
-uv run --frozen python scripts/sync_contracts.py
-```
-
-`_sync_manifest.json` 和 `tests/test_contracts_integrity.py` 用于发现两个项目之间的契约漂移。
+Schema、校验器和共享数据模型来自独立的 `mtp-contracts-core` 包，本项目只负责把这些
+能力暴露为 MCP 工具。`pyproject.toml` 固定到 core 的 Git tag，升级契约时需要显式
+修改 tag 并提交更新后的 `uv.lock`。
 
 ## 验证
 

@@ -1,7 +1,7 @@
 """测试用例规范工具（确定性；不调用大模型、不执行测试）。
 
-供 MCP 服务与本地脚本共用，全部构建在内联 contracts-core 之上：
-所有校验逻辑来自 `mtp_contracts_mcp.contracts`，不另写一套。
+供 MCP 服务与本地脚本共用，全部构建在独立的 contracts-core 包之上：
+所有校验逻辑来自 `mtp_contracts`，不另写一套。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-from mtp_contracts_mcp.contracts.case_validator import (
+from mtp_contracts.case_validator import (
     SUPPORTED_SCHEMA_VERSIONS,
     load_schema,
     validate_case,

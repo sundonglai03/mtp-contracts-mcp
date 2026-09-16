@@ -1,6 +1,9 @@
 FROM python:3.12-slim
 
 ARG UV_VERSION=0.12.5
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir "uv==$UV_VERSION"
 
 WORKDIR /app
@@ -14,7 +17,6 @@ RUN uv sync --no-dev --frozen --no-install-project
 
 # 再装本包源码
 COPY src ./src
-COPY scripts ./scripts
 RUN uv sync --no-dev --frozen
 
 ENV PATH="/app/.venv/bin:$PATH" \
