@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir uv
+ARG UV_VERSION=0.12.5
+RUN pip install --no-cache-dir "uv==$UV_VERSION"
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
@@ -9,7 +10,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # 先装依赖（利用层缓存）
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --no-dev --frozen
+RUN uv sync --no-dev --frozen --no-install-project
 
 # 再装本包源码
 COPY src ./src

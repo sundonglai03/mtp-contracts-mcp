@@ -1,6 +1,9 @@
 # 测试用例规范系统（独立部署，不与 mtp-platform 共用 compose）
+name: mtp-contracts-mcp
+
 services:
   contracts-mcp:
+    container_name: mtp-contracts-mcp
     build: .
     image: mtp-contracts-mcp:0.1.0
     ports:
@@ -8,6 +11,11 @@ services:
     environment:
       MTP_CONTRACTS_MCP_HOST: 0.0.0.0
       MTP_CONTRACTS_MCP_PORT: "8000"
+      # contracts 服务不持有目标系统凭据；内网部署默认允许任意 Host。
+      # 若跨不可信网络暴露，应改成明确的 host:port 白名单并加反向代理认证。
+      MTP_CONTRACTS_MCP_ALLOWED_HOSTS: "off"
+      # 可选。宿主机设置同名变量后，所有 /mcp 请求必须带 Bearer Token。
+      MTP_CONTRACTS_MCP_TOKEN: ${MTP_CONTRACTS_MCP_TOKEN:-}
     # MCP 端点： http://<host>:8000/mcp   ；探活： /health
     healthcheck:
       test:

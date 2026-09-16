@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import hmac
 import os
 from typing import Annotated, Any
 
@@ -32,6 +33,34 @@ STREAMABLE_HTTP_PATH = "/mcp"
 # Host 白名单（DNS rebinding 防护）。SDK 默认只放行本机，容器/内网访问会被拒。
 # 用 MTP_CONTRACTS_MCP_ALLOWED_HOSTS 覆盖（逗号分隔，支持 "host:*"）；设为 off 关闭校验。
 DEFAULT_ALLOWED_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+
+
+class McpBearerAuthMiddleware:
+    """可选的 MCP Bearer Token；health 保持公开供容器探活。"""
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        token = os.environ.get("MTP_CONTRACTS_MCP_TOKEN", "")
+        path = str(scope.get("path", ""))
+        if token and scope.get("type") == "http" and (
+            path == STREAMABLE_HTTP_PATH or path.startswith(STREAMABLE_HTTP_PATH + "/")
+        ):
+            headers = {
+                key.decode("latin-1").lower(): value.decode("latin-1")
+                for key, value in scope.get("headers", [])
+            }
+            supplied = headers.get("authorization", "")
+            expected = f"Bearer {token}"
+            if not hmac.compare_digest(supplied, expected):
+                response = JSONResponse(
+                    {"error": "unauthorized", "message": "需要有效的 Bearer Token"},
+                    status_code=401,
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 def transport_security_from_env() -> TransportSecuritySettings:
@@ -120,13 +149,15 @@ def build_mcp() -> MCPServer:
 
 
 def create_app(host: str = DEFAULT_HOST) -> Starlette:
-    return build_mcp().streamable_http_app(
+    app = build_mcp().streamable_http_app(
         streamable_http_path=STREAMABLE_HTTP_PATH,
         json_response=True,
         stateless_http=True,
         host=host,
         transport_security=transport_security_from_env(),
     )
+    app.add_middleware(McpBearerAuthMiddleware)
+    return app
 
 
 def main(argv: list[str] | None = None) -> int:

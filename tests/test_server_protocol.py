@@ -63,3 +63,29 @@ async def test_health_endpoint_is_public():
             resp = await client.get("/health")
             assert resp.status_code == 200
             assert resp.json()["status"] == "ok"
+
+
+async def test_mcp_bearer_token_is_optional_and_health_stays_public(monkeypatch):
+    monkeypatch.setenv("MTP_CONTRACTS_MCP_TOKEN", "test-token")
+    app = create_app()
+    async with app.router.lifespan_context(app):
+        async with _client_for(app) as client:
+            health = await client.get("/health")
+            denied = await client.post(
+                "/mcp",
+                headers={"accept": "application/json", "content-type": "application/json"},
+                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            )
+            allowed = await client.post(
+                "/mcp",
+                headers={
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                    "authorization": "Bearer test-token",
+                },
+                json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            )
+
+    assert health.status_code == 200
+    assert denied.status_code == 401
+    assert allowed.status_code != 401
