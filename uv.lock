@@ -357,7 +357,6 @@ source = { editable = "." }
 dependencies = [
     { name = "mcp" },
     { name = "mtp-contracts-core" },
-    { name = "pyyaml" },
     { name = "uvicorn" },
 ]
 
@@ -375,7 +374,6 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.0" },
     { name = "mtp-contracts-core", git = "https://github.com/sundonglai03/mtp-contracts-core.git?tag=v0.1.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", specifier = ">=0.31" },
 ]
 provides-extras = ["dev"]

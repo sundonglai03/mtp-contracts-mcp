@@ -1,107 +1,95 @@
-"""规范工具的单元测试（不依赖网络/MCP）。"""
+"""Tests for the single JSON suite-building operation."""
 
 from __future__ import annotations
 
 from mtp_contracts_mcp import tools
 
-VALID_CASE = {
-    "schema_version": 1,
-    "id": "OK-1",
-    "title": "valid",
-    "steps": [{"id": "s1", "action": "playwright.snapshot"}],
-}
 
-MISSING_STEPS = {
-    "schema_version": 1,
-    "id": "BAD-1",
-    "title": "missing steps",
-}
-
-UNDECLARED_REF = {
-    "schema_version": 1,
-    "id": "BAD-REF",
-    "title": "undeclared reference",
-    "steps": [
-        {
-            "id": "s1",
-            "action": "api.get",
-            "args": {"url": "{{ vars.undefined }}"},
-        }
-    ],
-}
-
-
-def test_validate_valid_case_ok():
-    result = tools.validate_one(VALID_CASE)
-    assert result["ok"], result["issues"]
-    assert result["issue_count"] == 0
-
-
-def test_validate_invalid_case_has_paths():
-    result = tools.validate_one(MISSING_STEPS)
-    assert not result["ok"]
-    assert result["issues"]
-    assert all(i["path"] for i in result["issues"])
-
-
-def test_validate_accepts_dict_input():
-    case = {
-        "schema_version": 1,
-        "id": "OK-1",
-        "title": "t",
+def _case(case_id: str) -> dict:
+    return {
+        "id": case_id,
+        "title": f"case {case_id}",
         "steps": [{"id": "s1", "action": "playwright.snapshot"}],
     }
-    assert tools.validate_one(case)["ok"]
 
 
-def test_validate_suite_aggregates():
-    suite = tools.validate_many(
-        [
-            VALID_CASE,
-            UNDECLARED_REF,
-        ]
+def _assert_error_shape(result: dict) -> None:
+    assert set(result) == {"ok", "suite", "errors"}
+    assert result["ok"] is False
+    assert result["suite"] is None
+    assert result["errors"]
+    assert set(result["errors"][0]) == {
+        "case_index",
+        "case_id",
+        "path",
+        "code",
+        "message",
+    }
+
+
+def test_build_suite_returns_one_json_suite_and_only_adds_schema_version():
+    original = _case("A-1") | {"_source": "/not/a/file"}
+    result = tools.build_suite([original, _case("A-2")])
+
+    assert result == {
+        "ok": True,
+        "suite": {
+            "cases": [
+                original | {"schema_version": 1},
+                _case("A-2") | {"schema_version": 1},
+            ]
+        },
+        "errors": [],
+    }
+    assert "schema_version" not in original
+
+
+def test_build_suite_returns_structured_result_for_missing_empty_or_non_array_cases():
+    for payload, code in ((None, "required"), ([], "empty_cases"), ({}, "invalid_cases_type")):
+        result = tools.build_suite(payload)
+        _assert_error_shape(result)
+        assert result["errors"][0]["path"] == "cases"
+        assert result["errors"][0]["code"] == code
+
+
+def test_build_suite_rejects_yaml_text_or_any_non_object_case():
+    result = tools.build_suite(["id: YAML-1", _case("OK-1")])
+
+    _assert_error_shape(result)
+    assert result["errors"] == [
+        {
+            "case_index": 0,
+            "case_id": None,
+            "path": "",
+            "code": "invalid_case_type",
+            "message": "用例必须是 JSON 对象",
+        }
+    ]
+
+
+def test_build_suite_fails_whole_suite_and_keeps_all_structured_validation_errors():
+    result = tools.build_suite([_case("OK-1"), {"id": "BAD-1", "title": "missing steps"}])
+
+    _assert_error_shape(result)
+    assert any(
+        error["case_index"] == 1
+        and error["case_id"] == "BAD-1"
+        and error["path"] == "steps"
+        and error["code"] == "schema"
+        for error in result["errors"]
     )
-    assert suite["total"] == 2
-    assert suite["passed"] == 1
-    assert suite["failed"] == 1
-    assert suite["ok"] is False
 
 
-def test_validate_suite_reports_unparseable_input():
-    suite = tools.validate_many(["- not-a-mapping"])
-    assert suite["ok"] is False
-    assert suite["results"][0]["issues"][0]["kind"] == "input"
+def test_build_suite_rejects_duplicate_case_ids_without_partial_suite():
+    result = tools.build_suite([_case("DUP-1"), _case("DUP-1")])
 
-
-def test_normalize_fills_defaults_and_strips_internal():
-    result = tools.normalize_one({"id": "N-1", "_source": "/x", "steps": []})
-    case = result["case"]
-    assert case["schema_version"] == 1
-    assert "_source" not in case
-    assert case["assertions"] == []
-    assert any("schema_version" in c for c in result["changes"])
-
-
-def test_schema_info_shape():
-    info = tools.schema_info()
-    assert info["schema_version_supported"] == [1]
-    assert isinstance(info["json_schema"], dict)
-    assert info["json_schema"]
-
-
-def test_explain_error_gives_hint():
-    out = tools.explain_error("steps[0].action", "缺少必填字段", "schema")
-    assert out["path"] == "steps[0].action"
-    assert out["hint"]
-
-
-def test_explain_error_plaintext_secret_hint():
-    out = tools.explain_error("secrets.password", "禁止明文凭据", "security")
-    assert "secrets" in out["hint"]
-
-
-def test_parse_case_rejects_sequence():
-    import pytest
-
-    with pytest.raises(tools.CaseInputError):
-        tools.parse_case("- a\n- b\n")
+    _assert_error_shape(result)
+    assert result["errors"] == [
+        {
+            "case_index": 1,
+            "case_id": "DUP-1",
+            "path": "id",
+            "code": "duplicate_id",
+            "message": "用例 id 与 cases[0] 重复",
+        }
+    ]

@@ -16,15 +16,5 @@ services:
       MTP_CONTRACTS_MCP_ALLOWED_HOSTS: "off"
       # 可选。宿主机设置同名变量后，所有 /mcp 请求必须带 Bearer Token。
       MTP_CONTRACTS_MCP_TOKEN: ${MTP_CONTRACTS_MCP_TOKEN:-}
-    # MCP 端点： http://<host>:8000/mcp   ；探活： /health
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    # MCP 端点： http://<host>:8000/mcp
     restart: unless-stopped

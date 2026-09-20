@@ -1,27 +1,23 @@
-"""mtp-contracts-mcp 服务端：把 contracts-core 暴露为 Streamable HTTP MCP 服务。
+"""mtp-contracts-mcp: validate one JSON suite through Streamable HTTP MCP.
 
-只提供确定性工具：校验、规范化、schema、错误解释。不执行测试、不连目标系统。
+只提供一个确定性工具；不执行测试、不连目标系统。
 
 基于 **mcp 2.x**（`mcp.server.mcpserver.MCPServer`）。注意与 1.x 的差异：
 - 1.x 的 `FastMCP` 在 2.x 改名为 `MCPServer`；
 - `host/port/json_response/stateless_http` 等不再在构造器里，而是 `streamable_http_app()` / `run()` 的参数；
-- 自定义 HTTP 路由用 `@server.custom_route(...)`（免鉴权，适合 healthcheck）。
 """
 
 from __future__ import annotations
 
 import argparse
-import functools
 import hmac
 import os
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic import Field
+from pydantic import BaseModel, Field
 from starlette.applications import Starlette
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from mtp_contracts_mcp import tools
@@ -36,7 +32,7 @@ DEFAULT_ALLOWED_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 
 
 class McpBearerAuthMiddleware:
-    """可选的 MCP Bearer Token；health 保持公开供容器探活。"""
+    """可选的 MCP Bearer Token。"""
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -70,25 +66,29 @@ def transport_security_from_env() -> TransportSecuritySettings:
     hosts = [h.strip() for h in raw.split(",") if h.strip()] or DEFAULT_ALLOWED_HOSTS
     return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=hosts)
 
+
 INSTRUCTIONS = (
-    "测试用例规范服务：把不同来源的用例校验、规范化为统一格式。"
-    "只做确定性处理，不执行测试、不连接 SSH/MySQL/浏览器。"
+    "用例套件校验服务：只接收 JSON 对象中的非空 cases 数组，返回一个 JSON 套件或"
+    "固定结构的校验错误。不会读取文件、解析 YAML、执行测试、调用模型或补写业务步骤。"
 )
 
 
-def safe_tool(fn):
-    """把任意异常转成 ToolError，否则 SDK 会吞掉原因（只回 'Error executing tool'）。"""
+class SuiteError(BaseModel):
+    case_index: int | None
+    case_id: str | None
+    path: str
+    code: str
+    message: str
 
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        try:
-            return fn(*args, **kwargs)
-        except ToolError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            raise ToolError(f"{type(exc).__name__}: {exc}") from exc
 
-    return wrapper
+class Suite(BaseModel):
+    cases: list[dict[str, Any]]
+
+
+class SuiteResult(BaseModel):
+    ok: bool
+    suite: Suite | None
+    errors: list[SuiteError]
 
 
 def build_mcp() -> MCPServer:
@@ -100,50 +100,27 @@ def build_mcp() -> MCPServer:
         log_level="INFO",
     )
 
-    @server.tool()
-    @safe_tool
-    def validate_case(
-        case: Annotated[dict | str, Field(description="用例内容：YAML/JSON 文本，或已解析的对象")],
-    ) -> dict:
-        """校验单个用例，返回是否通过及全部问题（带字段路径）。"""
-        return tools.validate_one(case)
+    def build_suite(
+        cases: Annotated[
+            Any,
+            Field(description="必填的非空 JSON 数组；每项必须是一个测试用例 JSON 对象"),
+        ] = None,
+    ) -> SuiteResult:
+        """校验多个 JSON 用例，成功时返回一个 JSON 套件；失败时返回固定 errors 数组。"""
+        return SuiteResult.model_validate(tools.build_suite(cases))
 
-    @server.tool()
-    @safe_tool
-    def validate_suite(
-        cases: Annotated[list[dict | str], Field(description="一组用例内容（文本或对象）")],
-    ) -> dict:
-        """校验一组用例，返回逐条结果与汇总通过率。"""
-        return tools.validate_many(cases)
-
-    @server.tool()
-    @safe_tool
-    def normalize_case(
-        case: Annotated[dict | str, Field(description="候选用例内容：YAML/JSON 文本，或已解析的对象")],
-    ) -> dict:
-        """把候选用例规范化为标准格式，并列出做了哪些补齐（保守、可解释）。"""
-        return tools.normalize_one(case)
-
-    @server.tool()
-    @safe_tool
-    def get_schema() -> dict:
-        """返回用例 JSON Schema 与受支持的 schema_version。"""
-        return tools.schema_info()
-
-    @server.tool()
-    @safe_tool
-    def explain_validation_error(
-        path: Annotated[str, Field(description="出问题的字段路径，如 steps[0].action")],
-        message: Annotated[str, Field(description="校验器给出的原始消息")],
-        kind: Annotated[str, Field(description="问题类别：schema / semantics / security")] = "",
-    ) -> dict:
-        """把校验错误翻译成人能看懂的说明与修复方向。"""
-        return tools.explain_error(path, message, kind)
-
-    @server.custom_route("/health", methods=["GET"])
-    async def health(_request: Request) -> JSONResponse:
-        """容器 HEALTHCHECK 用；custom_route 天然免鉴权。"""
-        return JSONResponse({"status": "ok", "service": "mtp-contracts-mcp"})
+    server.add_tool(build_suite)
+    registered_tool = server._tool_manager.get_tool("build_suite")
+    assert registered_tool is not None
+    # The body deliberately accepts raw values so validation failures can use the
+    # same result shape. The published schema remains the strict caller contract.
+    registered_tool.parameters["properties"]["cases"] = {
+        "description": "必填的非空 JSON 数组；每项必须是一个测试用例 JSON 对象",
+        "type": "array",
+        "minItems": 1,
+        "items": {"type": "object"},
+    }
+    registered_tool.parameters["required"] = ["cases"]
 
     return server
 

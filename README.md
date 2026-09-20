@@ -1,68 +1,75 @@
 # mtp-contracts-mcp
 
-把自然语言或候选测试用例转换、校验为统一格式的 Streamable HTTP MCP 服务。
+Streamable HTTP MCP 服务：校验调用者给出的多个 JSON 测试用例，并在全部合法时返回一个 JSON 套件对象。
 
-它只负责测试用例规范，不连接 SSH、MySQL 或浏览器，也不执行测试和保存目标系统凭据。
+它不读取文件、不解析 YAML、不执行测试、不调用大模型，也不会补写业务步骤。
 
 ## 快速启动
 
-### Docker
-
 ```bash
 docker compose up -d --build
-docker compose logs -f contracts-mcp
 ```
 
 - MCP：`http://<服务器IP>:8000/mcp`
-- 健康检查：`http://<服务器IP>:8000/health`
-- 镜像：`mtp-contracts-mcp:0.1.0`
-- 容器：`mtp-contracts-mcp`
 
-内网使用也建议设置访问令牌：
+可选地设置访问令牌：
 
 ```bash
 export MTP_CONTRACTS_MCP_TOKEN='替换为随机长字符串'
 docker compose up -d --build
 ```
 
-设置后，访问 `/mcp` 必须携带：
+设置后，访问 `/mcp` 必须附带 `Authorization: Bearer <token>`。
 
-```http
-Authorization: Bearer 替换为随机长字符串
+## 唯一工具：`build_suite`
+
+工具只接受一个 JSON 参数对象，其中 `cases` 必填且必须是非空数组。每个元素必须是 JSON 对象：
+
+```json
+{
+  "cases": [
+    {
+      "id": "login-success",
+      "title": "正常登录",
+      "steps": [
+        {"id": "open", "action": "playwright.navigate", "args": {"url": "https://example.test/login"}}
+      ]
+    }
+  ]
+}
 ```
 
-`/health` 不需要令牌。
+不接收文件路径、YAML 文本或字符串形式的用例。仅当用例缺少 `schema_version` 时补默认值 `1`；其他字段和业务步骤不推断、不改写。套件内的 `id` 必须唯一。
 
-### 本地运行
+无论校验成功或失败，工具均返回同一 JSON 结构：
 
-```bash
-uv sync --frozen --extra dev
-uv run --frozen mtp-contracts-mcp --host 0.0.0.0 --port 8000
+```json
+{
+  "ok": true,
+  "suite": {"cases": [{"schema_version": 1, "id": "login-success", "title": "正常登录", "steps": [{"id": "open", "action": "playwright.navigate"}]}]},
+  "errors": []
+}
 ```
 
-## 提供的工具
+任一用例不合法时，`ok` 为 `false`、`suite` 为 `null`，绝不返回半成品：
 
-| 工具 | 作用 |
-| --- | --- |
-| `normalize_case` | 保守地把候选内容转换为标准用例 |
-| `validate_case` | 校验单个用例并返回字段路径和全部问题 |
-| `validate_suite` | 批量校验一组用例 |
-| `get_schema` | 返回 JSON Schema 和支持的版本 |
-| `explain_validation_error` | 将校验错误转换为可读说明和修复建议 |
-
-这些工具都是确定性工具：不调用大模型，也不负责补写测试业务内容。Agent 负责理解需求和生成候选用例，本服务负责规范化和把关。
-
-## 典型流程
-
-```text
-需求 / 功能点 / 原始用例
-        ↓
-       Agent
-        ↓ 调用 MCP
-规范化用例 + 校验结果
-        ↓
-   mtp-platform 执行
+```json
+{
+  "ok": false,
+  "suite": null,
+  "errors": [
+    {
+      "case_index": 1,
+      "case_id": "login-failure",
+      "path": "steps",
+      "code": "schema",
+      "message": "缺少必填字段"
+    }
+  ]
+}
 ```
+
+每个错误对象始终只有以下字段：`case_index`、`case_id`、`path`、`code`、`message`。
 
 ## 环境变量
 
@@ -72,14 +79,6 @@ uv run --frozen mtp-contracts-mcp --host 0.0.0.0 --port 8000
 | `MTP_CONTRACTS_MCP_PORT` | `8000` | 监听端口 |
 | `MTP_CONTRACTS_MCP_ALLOWED_HOSTS` | 仅本机 | Host 白名单，逗号分隔；`off` 表示关闭校验 |
 | `MTP_CONTRACTS_MCP_TOKEN` | 空 | Bearer Token；为空时不启用认证 |
-
-Compose 为方便内网访问设置了 `MTP_CONTRACTS_MCP_ALLOWED_HOSTS=off`。跨不可信网络时，应启用令牌，并在反向代理上配置 HTTPS 和明确的 Host 白名单。
-
-## contracts 依赖
-
-Schema、校验器和共享数据模型来自独立的 `mtp-contracts-core` 包，本项目只负责把这些
-能力暴露为 MCP 工具。`pyproject.toml` 固定到 core 的 Git tag，升级契约时需要显式
-修改 tag 并提交更新后的 `uv.lock`。
 
 ## 验证
 
