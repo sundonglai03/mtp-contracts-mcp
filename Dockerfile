@@ -12,15 +12,16 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # 先装依赖（利用层缓存）：只 COPY 锁文件，改 src 不会触发重装。
-# 构建机装了 buildx（Docker 23+ 自带，或 docker-buildx-plugin）后，可以给这两条
-# RUN 加上 --mount=type=cache,target=/root/.cache/uv，让锁文件变更后的重装也复用
-# 宿主机缓存，不必重新下载 wheel 和 clone git 依赖。
+# --mount=type=cache 把 uv 的下载缓存（约定路径 /root/.cache/uv）挂到宿主机的
+# 构建缓存上：锁文件变更后重装也复用缓存，不必重新下载 wheel 和 clone git 依赖。
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --no-dev --frozen --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --frozen --no-install-project
 
 # 再装本包源码
 COPY src ./src
-RUN uv sync --no-dev --frozen
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --no-dev --frozen
 
 ENV PATH="/app/.venv/bin:$PATH" \
     MTP_CONTRACTS_MCP_HOST=0.0.0.0 \
