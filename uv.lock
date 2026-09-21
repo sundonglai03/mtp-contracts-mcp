@@ -343,15 +343,15 @@ wheels = [
 
 [[package]]
 name = "mtp-contracts-core"
-version = "0.1.0"
-source = { git = "https://github.com/sundonglai03/mtp-contracts-core.git?tag=v0.1.1#4764124420a408956bed2395c5f9ca1127497d00" }
+version = "0.1.2"
+source = { git = "https://github.com/sundonglai03/mtp-contracts-core.git?tag=v0.1.2#6140d0e90bb05eb17a1627c2fab203af470ec6d7" }
 dependencies = [
     { name = "jsonschema" },
 ]
 
 [[package]]
 name = "mtp-contracts-mcp"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
@@ -371,7 +371,7 @@ requires-dist = [
     { name = "anyio", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.5" },
     { name = "mcp", specifier = ">=2.0" },
-    { name = "mtp-contracts-core", git = "https://github.com/sundonglai03/mtp-contracts-core.git?tag=v0.1.1" },
+    { name = "mtp-contracts-core", git = "https://github.com/sundonglai03/mtp-contracts-core.git?tag=v0.1.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0" },
     { name = "uvicorn", specifier = ">=0.31" },
 ]

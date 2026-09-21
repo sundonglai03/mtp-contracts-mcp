@@ -16,6 +16,7 @@ from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mtp_contracts.action_catalog import render_text as render_actions
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -70,6 +71,14 @@ def transport_security_from_env() -> TransportSecuritySettings:
 INSTRUCTIONS = (
     "用例套件校验服务：只接收 JSON 对象中的非空 cases 数组，返回一个 JSON 套件或"
     "固定结构的校验错误。不会读取文件、解析 YAML、执行测试、调用模型或补写业务步骤。"
+    "\n\n校验依据 mtp-contracts-core 的**共用动作目录**（生成器、校验器、执行器同一份）："
+    "未知 action、缺必填参数、参数类型不符、重复 id、引用不存在的步骤、引用某步骤"
+    "不会返回的字段，都会在创建任务之前带路径报出来。"
+    "\n\n凭证：用例 `secrets` 是 `{逻辑名: 实际凭证}`（直接写真实值，**不是环境变量名**），"
+    "用 `{{ secrets.xxx }}` 引用；mysql 步骤必须传 `args.credentials`（可写 "
+    '`"{{ env.db }}"` 复用 environment.db 对象）。'
+    "\n\n可用动作（由 action_catalog 生成，勿手写）：\n"
+    f"{render_actions()}"
 )
 
 
@@ -106,7 +115,11 @@ def build_mcp() -> MCPServer:
             Field(description="必填的非空 JSON 数组；每项必须是一个测试用例 JSON 对象"),
         ] = None,
     ) -> SuiteResult:
-        """校验多个 JSON 用例，成功时返回一个 JSON 套件；失败时返回固定 errors 数组。"""
+        """校验多个 JSON 用例，成功时返回一个 JSON 套件；失败时返回固定 errors 数组。
+
+        按共用动作目录校验动作与参数；errors 里每项的 code 是问题码
+        （unknown_action / missing_arg / invalid_arg_type / unknown_result_field …）。
+        """
         return SuiteResult.model_validate(tools.build_suite(cases))
 
     server.add_tool(build_suite)

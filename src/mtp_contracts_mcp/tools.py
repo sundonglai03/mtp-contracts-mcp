@@ -71,7 +71,9 @@ def build_suite(cases: Any = None) -> dict[str, Any]:
                     case_index=index,
                     case_id=case_id,
                     path=issue.path,
-                    code=issue.kind,
+                    # 用问题码（unknown_action / missing_arg / invalid_arg_type …）；
+                    # 没有专门码时沿用 kind（schema / semantics）。
+                    code=issue.error_code,
                     message=issue.message,
                 )
             )
