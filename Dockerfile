@@ -9,15 +9,21 @@ RUN pip install --no-cache-dir "uv==$UV_VERSION"
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_CACHE_DIR=/app/.cache/uv
 
 # 先装依赖（利用层缓存）
+# 依赖缓存挂在当前目录下的 /app/.cache/uv（见上面的 UV_CACHE_DIR）：
+# 依赖层重建（uv.lock 变更、换构建机、清过层缓存）时不会回 PyPI 重下，
+# git 依赖也不需要重新 clone。
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --no-dev --frozen --no-install-project
+RUN --mount=type=cache,target=/app/.cache/uv \
+    uv sync --no-dev --frozen --no-install-project
 
 # 再装本包源码
 COPY src ./src
-RUN uv sync --no-dev --frozen
+RUN --mount=type=cache,target=/app/.cache/uv \
+    uv sync --no-dev --frozen
 
 ENV PATH="/app/.venv/bin:$PATH" \
     MTP_CONTRACTS_MCP_HOST=0.0.0.0 \
