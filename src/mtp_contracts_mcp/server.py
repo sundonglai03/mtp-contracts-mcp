@@ -17,6 +17,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mtp_contracts.action_catalog import render_text as render_actions
+from mtp_contracts.assertion_catalog import render_text as render_assertions
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -133,17 +134,8 @@ INSTRUCTIONS = (
     "steps.<step_id>.<字段>（字段必须是该动作「返回」列里的字段）/ run.id / run.case_id / "
     "now.iso / now.epoch；支持下标，如 {{ steps.seed.rows[0].id }}。\n"
     "整个字符串就是一个引用时保留原始类型，所以 credentials 可以写 \"{{ env.db }}\" 把整个对象传进去。\n"
-    "\n【断言类型 -> 必填字段】\n"
-    "equals / contains / exit_code：actual + expected\n"
-    "status_code：actual（如 {{ steps.x.http_status }}）+ expected\n"
-    "response_time：actual + expected（毫秒；可用 args.mode 选比较方式）\n"
-    "json_path：source={{ steps.x }} + args.path（JSONPath）\n"
-    "json_schema：source + args.schema（或 args.schema_file）\n"
-    "page_text_contains：source={{ steps.snap }} + expected（页面可见文本）\n"
-    "element_visible：source={{ steps.x }} + args.target（Playwright 选择器），可选 args.timeout_ms\n"
-    "db_value：actual={{ steps.q.rows[0].列名 }} + expected；可选 args.row / args.column\n"
-    "file_exists：args.path；可选 args.min_bytes\n"
-    "all / any：items（子断言数组）\n"
+    "\n【断言类型 -> 必填字段（由 assertion_catalog 生成，勿手写）】\n"
+    f"{render_assertions()}\n"
     "\n【errors 与 warnings 分别怎么办】\n"
     "errors = 套件**不合法**：必须按每一项的 path/code 改完才能生成套件；结构不合法时不会同时给 warnings（不猜），所以是两轮：先清 errors 拿到套件，再按 warnings 收尾。\n"
     "warnings = 套件合法、平台也会接受，但**很可能跑不过**（就是下面铁律对应的坑：没自己"
