@@ -82,6 +82,21 @@ INSTRUCTIONS = (
     '`"{{ env.db }}"` 复用 environment.db 对象）。'
     "\n\n可用动作（由 action_catalog 生成，勿手写）：\n"
     f"{render_actions()}"
+    "\n\n运行期铁律（校验只管契约合法；下面这些决定用例在平台上能不能跑过）：\n"
+    "1. 每个用例必须自足：平台会在每个用例开始前重建浏览器会话。web 用例要自己 "
+    "playwright.navigate 打开页面并处理登录 / 门禁；确实要复用上一个用例的会话时才写 "
+    "reuse_session: true。不要假设上一个用例已经登录、或页面已经打开。\n"
+    "2. 等待要显式：navigate 返回不代表页面渲染完成（SPA 组件可能晚几百毫秒才出现）。"
+    "用自带自动等待的 playwright.click，或在 evaluate 里轮询、没等到就直接抛错；"
+    "不要用一次性 evaluate 去查元素，也不要用 wait_for 的 time 做固定睡眠。\n"
+    "3. 参数红线：playwright.evaluate 必须 allow_js: true；mysql.* 必须传 credentials"
+    "（可写 \"{{ env.db }}\" 复用 environment.db）；ssh.execute 需要 password 或 ssh_key_filepath。\n"
+    "4. 每个用例至少要有断言与证据：浏览器步骤声明 evidence: [\"screenshot\"]；"
+    "断言取具体字段（如 {{ steps.x.stdout }}），不要拿整个步骤对象去比较。\n"
+    "5. 环境信息（被测地址 / 账号 / 凭证）由使用者提供，写进 environment / variables / secrets，"
+    "不要编造目标地址；secrets 写真实值，套件文件本身含凭证，不要提交到 Git。\n"
+    "\n返回里的 warnings 是**不阻断**的运行期忠告（缺 navigate、固定睡眠、没有断言 / 证据、"
+    "整对象断言等）：按它改完再交付，能省掉平台上的一次失败运行。"
 )
 
 
@@ -101,6 +116,8 @@ class SuiteResult(BaseModel):
     ok: bool
     suite: Suite | None
     errors: list[SuiteError]
+    # 不阻断的运行期忠告：契约合法，但很可能在平台上跑不稳 / 跑不过。
+    warnings: list[SuiteError] = []
 
 
 def build_mcp() -> MCPServer:

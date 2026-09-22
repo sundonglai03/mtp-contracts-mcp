@@ -6,7 +6,8 @@ from typing import Any
 
 from mtp_contracts.case_validator import SUPPORTED_SCHEMA_VERSIONS, validate_case
 
-def _error(
+
+def _issue(
     *,
     case_index: int | None,
     case_id: str | None,
@@ -14,7 +15,7 @@ def _error(
     code: str,
     message: str,
 ) -> dict[str, int | str | None]:
-    """Return the fixed error shape exposed by this service."""
+    """固定的问题形状：`errors`（阻断）与 `warnings`（不阻断的忠告）共用。"""
     return {
         "case_index": case_index,
         "case_id": case_id,
@@ -24,33 +25,66 @@ def _error(
     }
 
 
-def _failure(errors: list[dict[str, int | str | None]]) -> dict[str, Any]:
-    return {"ok": False, "suite": None, "errors": errors}
+def _failure(
+    errors: list[dict[str, int | str | None]],
+    warnings: list[dict[str, int | str | None]] | None = None,
+) -> dict[str, Any]:
+    return {"ok": False, "suite": None, "errors": errors, "warnings": warnings or []}
 
 
 def build_suite(cases: Any = None) -> dict[str, Any]:
-    """Validate case JSON objects and return one JSON suite, never a partial result."""
+    """Validate case JSON objects and return one JSON suite, never a partial result.
+
+    `warnings` 不阻断生成：它们是「契约合法、但很可能在平台上跑不稳 / 跑不过」的
+    运行期忠告（缺 navigate、固定睡眠、没有断言、没有证据、整对象断言），
+    写用例的 agent 按它自查即可，不必去读平台文档。
+    """
     if cases is None:
         return _failure(
-            [_error(case_index=None, case_id=None, path="cases", code="required", message="cases 必填且不能为空")]
+            [
+                _issue(
+                    case_index=None,
+                    case_id=None,
+                    path="cases",
+                    code="required",
+                    message="cases 必填且不能为空",
+                )
+            ]
         )
     if not isinstance(cases, list):
         return _failure(
-            [_error(case_index=None, case_id=None, path="cases", code="invalid_cases_type", message="cases 必须是 JSON 数组")]
+            [
+                _issue(
+                    case_index=None,
+                    case_id=None,
+                    path="cases",
+                    code="invalid_cases_type",
+                    message="cases 必须是 JSON 数组",
+                )
+            ]
         )
     if not cases:
         return _failure(
-            [_error(case_index=None, case_id=None, path="cases", code="empty_cases", message="cases 必填且不能为空")]
+            [
+                _issue(
+                    case_index=None,
+                    case_id=None,
+                    path="cases",
+                    code="empty_cases",
+                    message="cases 必填且不能为空",
+                )
+            ]
         )
 
     errors: list[dict[str, int | str | None]] = []
+    warnings: list[dict[str, int | str | None]] = []
     normalized_cases: list[dict[str, Any]] = []
     seen_ids: dict[str, int] = {}
 
     for index, candidate in enumerate(cases):
         if not isinstance(candidate, dict):
             errors.append(
-                _error(
+                _issue(
                     case_index=index,
                     case_id=None,
                     path="",
@@ -65,9 +99,10 @@ def build_suite(cases: Any = None) -> dict[str, Any]:
         case.setdefault("schema_version", SUPPORTED_SCHEMA_VERSIONS[-1])
         case_id = case.get("id") if isinstance(case.get("id"), str) else None
 
-        for issue in validate_case(case).issues:
+        result = validate_case(case)
+        for issue in result.issues:
             errors.append(
-                _error(
+                _issue(
                     case_index=index,
                     case_id=case_id,
                     path=issue.path,
@@ -77,11 +112,21 @@ def build_suite(cases: Any = None) -> dict[str, Any]:
                     message=issue.message,
                 )
             )
+        for issue in result.warnings:
+            warnings.append(
+                _issue(
+                    case_index=index,
+                    case_id=case_id,
+                    path=issue.path,
+                    code=issue.error_code,
+                    message=issue.message,
+                )
+            )
 
         if case_id is not None:
             if case_id in seen_ids:
                 errors.append(
-                    _error(
+                    _issue(
                         case_index=index,
                         case_id=case_id,
                         path="id",
@@ -94,5 +139,10 @@ def build_suite(cases: Any = None) -> dict[str, Any]:
         normalized_cases.append(case)
 
     if errors:
-        return _failure(errors)
-    return {"ok": True, "suite": {"cases": normalized_cases}, "errors": []}
+        return _failure(errors, warnings)
+    return {
+        "ok": True,
+        "suite": {"cases": normalized_cases},
+        "errors": [],
+        "warnings": warnings,
+    }
