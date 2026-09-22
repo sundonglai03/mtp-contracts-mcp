@@ -143,11 +143,17 @@ def test_build_suite_reports_non_blocking_warnings_for_runtime_risks():
     )
 
 
-def test_build_suite_keeps_warnings_when_the_suite_is_rejected():
-    """有阻断错误时也把 warnings 一起给出来，agent 可以一次改完。"""
-    broken = _case("BROKEN-1") | {"steps": [{"id": "s1", "action": "playwright.close", "args": {}}]}
+def test_build_suite_skips_warnings_while_schema_is_broken():
+    """结构不合法时只给 errors（此时不猜 warnings），修完 errors 再按 warnings 收尾。"""
+    broken = {
+        "id": "BROKEN-1",
+        "title": "broken",
+        "priority": "P9",  # 非法枚举 → 阻断错误
+        "steps": [{"id": "s1", "action": "playwright.close", "args": {}}],
+    }
 
     result = tools.build_suite([broken])
 
     _assert_error_shape(result)
-    assert [warning["code"] for warning in result["warnings"]] == ["no_assertions", "no_evidence"]
+    assert result["warnings"] == []
+    assert any(error["code"] == "schema" for error in result["errors"])

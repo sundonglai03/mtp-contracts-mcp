@@ -145,7 +145,7 @@ INSTRUCTIONS = (
     "file_exists：args.path；可选 args.min_bytes\n"
     "all / any：items（子断言数组）\n"
     "\n【errors 与 warnings 分别怎么办】\n"
-    "errors = 套件**不合法**：必须按每一项的 path/code 改完，改完才可能生成套件。\n"
+    "errors = 套件**不合法**：必须按每一项的 path/code 改完才能生成套件；结构不合法时不会同时给 warnings（不猜），所以是两轮：先清 errors 拿到套件，再按 warnings 收尾。\n"
     "warnings = 套件合法、平台也会接受，但**很可能跑不过**（就是下面铁律对应的坑：没自己"
     "打开页面、固定睡眠、没有断言或证据、断言取整个步骤对象）。它不阻断生成，但你应当先改"
     "掉再交付：它比「能生成」更接近「能跑过」。\n"

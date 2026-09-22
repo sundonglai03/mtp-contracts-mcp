@@ -62,7 +62,7 @@ async def test_protocol_exposes_one_tool_and_always_returns_json_result_shape():
         assert not result.is_error
         assert len(result.content) == 1
         payload = json.loads(result.content[0].text)
-        assert set(payload) == {"ok", "suite", "errors"}
+        assert set(payload) == {"ok", "suite", "errors", "warnings"}
         assert payload["ok"] is expected_ok
     assert success.structured_content["suite"]["cases"][0]["schema_version"] == 1
     assert failure.structured_content["errors"][0]["code"] == "invalid_case_type"
