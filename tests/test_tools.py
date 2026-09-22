@@ -6,15 +6,31 @@ from mtp_contracts_mcp import tools
 
 
 def _case(case_id: str) -> dict:
+    """一个「写对了」的用例：自己开页面、有证据、有断言 —— 不该产生任何 warnings。"""
     return {
         "id": case_id,
         "title": f"case {case_id}",
-        "steps": [{"id": "s1", "action": "playwright.snapshot"}],
+        "steps": [
+            {
+                "id": "s1",
+                "action": "playwright.navigate",
+                "args": {"url": "https://example.local/", "timeout": 5000},
+            },
+            {
+                "id": "s2",
+                "action": "playwright.snapshot",
+                "args": {},
+                "evidence": ["screenshot"],
+            },
+        ],
+        "assertions": [
+            {"id": "a1", "type": "page_text_contains", "source": "{{ steps.s2 }}", "expected": "ok"}
+        ],
     }
 
 
 def _assert_error_shape(result: dict) -> None:
-    assert set(result) == {"ok", "suite", "errors"}
+    assert set(result) == {"ok", "suite", "errors", "warnings"}
     assert result["ok"] is False
     assert result["suite"] is None
     assert result["errors"]
@@ -40,6 +56,7 @@ def test_build_suite_returns_one_json_suite_and_only_adds_schema_version():
             ]
         },
         "errors": [],
+        "warnings": [],
     }
     assert "schema_version" not in original
 
@@ -93,3 +110,44 @@ def test_build_suite_rejects_duplicate_case_ids_without_partial_suite():
             "message": "用例 id 与 cases[0] 重复",
         }
     ]
+
+
+def test_build_suite_reports_non_blocking_warnings_for_runtime_risks():
+    """契约合法但很可能跑不过的用例：仍能生成套件，但要带上 warnings 让 agent 自查。"""
+    risky = {
+        "id": "RISKY-1",
+        "title": "risky",
+        "steps": [
+            {"id": "click-1", "action": "playwright.click", "args": {"target": "#go"}},
+            {"id": "sleep-1", "action": "playwright.wait_for", "args": {"time": 3}},
+        ],
+        "assertions": [
+            {"id": "a1", "type": "equals", "actual": "{{ steps.click-1 }}", "expected": "x"}
+        ],
+    }
+    result = tools.build_suite([risky])
+
+    assert result["ok"] is True, result["errors"]
+    assert result["suite"] == {"cases": [risky | {"schema_version": 1}]}
+    assert result["errors"] == []
+    assert {warning["code"] for warning in result["warnings"]} == {
+        "no_navigate",
+        "fixed_sleep",
+        "no_evidence",
+        "whole_step_actual",
+    }
+    assert all(
+        set(warning) == {"case_index", "case_id", "path", "code", "message"}
+        and warning["case_id"] == "RISKY-1"
+        for warning in result["warnings"]
+    )
+
+
+def test_build_suite_keeps_warnings_when_the_suite_is_rejected():
+    """有阻断错误时也把 warnings 一起给出来，agent 可以一次改完。"""
+    broken = _case("BROKEN-1") | {"steps": [{"id": "s1", "action": "playwright.close", "args": {}}]}
+
+    result = tools.build_suite([broken])
+
+    _assert_error_shape(result)
+    assert [warning["code"] for warning in result["warnings"]] == ["no_assertions", "no_evidence"]

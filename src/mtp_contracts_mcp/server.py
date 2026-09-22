@@ -78,9 +78,6 @@ MINIMAL_EXAMPLE = """{
   "variables": {"home_text": "系统首页"},
   "steps": [
     {"id": "open-home", "action": "playwright.navigate", "args": {"url": "{{ env.base_url }}/"}},
-    {"id": "skip-ukey", "action": "playwright.click",
-     "args": {"target": "button:has-text('跳过')"}, "on_failure": "continue",
-     "description": "UKey 提示出现就点掉；没有这个按钮时该步失败但不中断（on_failure: continue）"},
     {"id": "snap-home", "action": "playwright.snapshot", "args": {}, "evidence": ["screenshot"]}
   ],
   "assertions": [
@@ -88,6 +85,13 @@ MINIMAL_EXAMPLE = """{
      "expected": "{{ vars.home_text }}", "severity": "critical"}
   ]
 }"""
+
+
+# 「有就点、没有就跳过」的正确写法：JS 永不抛错（失败留给后面的明确等待）。
+# 不能用 on_failure: continue 来当"可选"——平台里任何失败步骤都会让用例判失败。
+OPTIONAL_STEP_EXAMPLE = """{"id": "skip-gate-if-present", "action": "playwright.evaluate",
+ "args": {"allow_js": true, "function": "async () => { const find = () => Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').trim() === '跳过'); const deadline = Date.now() + 10000; while (Date.now() < deadline) { const b = find(); if (b) { b.click(); return 'clicked'; } await new Promise(r => setTimeout(r, 200)); } return 'not-present'; }"},
+ "description": "有门禁就点掉、没有就返回 not-present —— 这一步永不失败"}"""
 
 
 INSTRUCTIONS = (
@@ -147,6 +151,14 @@ INSTRUCTIONS = (
     "掉再交付：它比「能生成」更接近「能跑过」。\n"
     "\n【最小可用示例（可直接照抄改；这份示例本身通过校验且零 warnings）】\n"
     + MINIMAL_EXAMPLE
+    + "\n【没有「可选步骤」这回事（最容易写错的一点）】\n"
+    "平台里**任何失败步骤都会让用例判失败**：on_failure / continue_on_error 只决定"
+    "「失败后要不要继续跑后面的步骤」，并不容忍失败；expect_failure 是给「本应失败的负向"
+    "用例」用的（失败才算通过）。所以「有就点、没有就跳过」这类可选交互，必须用一个"
+    "**永不抛错**的 evaluate 步骤实现，例如环境有 UKey 门禁时：\n"
+    + OPTIONAL_STEP_EXAMPLE
+    + "\n（要点：只用 JS 点、找不到就返回状态字符串、绝不 throw；后面另起一步 wait_for 等"
+    "「已进首页」的明确信号，把真正的失败暴露在那一层。）\n"
     + "\n\n【交付】把返回的 suite 原样存成 .json 交给测试人员上传到 mtp-platform；"
     "平台接受 {\"cases\": [...]}，也接受本工具的完整返回（会自动取其中的 suite）。"
 )
