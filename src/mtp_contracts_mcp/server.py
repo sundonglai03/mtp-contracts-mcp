@@ -74,6 +74,9 @@ INSTRUCTIONS = (
     "\n\n校验依据 mtp-contracts-core 的**共用动作目录**（生成器、校验器、执行器同一份）："
     "未知 action、缺必填参数、参数类型不符、重复 id、引用不存在的步骤、引用某步骤"
     "不会返回的字段，都会在创建任务之前带路径报出来。"
+    "\n\n返回的 `suite` 字段就是可直接上传给 mtp-platform 的测试套件（形状 "
+    '{"cases": [...]}）：把 `suite` 的内容原样保存成 .json 文件即可，平台接受同一形状，'
+    "也接受把本工具的完整返回原样上传（平台会自动取其中的 suite）。"
     "\n\n凭证：用例 `secrets` 是 `{逻辑名: 实际凭证}`（直接写真实值，**不是环境变量名**），"
     "用 `{{ secrets.xxx }}` 引用；mysql 步骤必须传 `args.credentials`（可写 "
     '`"{{ env.db }}"` 复用 environment.db 对象）。'
