@@ -68,6 +68,28 @@ def transport_security_from_env() -> TransportSecuritySettings:
     return TransportSecuritySettings(enable_dns_rebinding_protection=True, allowed_hosts=hosts)
 
 
+# 最小可用示例。它本身必须通过校验且 lint 零忠告 —— 改这段说明时一并跑测试验证，
+# 否则 agent 照抄会直接失败。
+MINIMAL_EXAMPLE = """{
+  "schema_version": 1,
+  "id": "TC_home_page_open",
+  "title": "打开首页并校验页面文本",
+  "environment": {"name": "demo", "base_url": "https://192.168.0.10"},
+  "variables": {"home_text": "系统首页"},
+  "steps": [
+    {"id": "open-home", "action": "playwright.navigate", "args": {"url": "{{ env.base_url }}/"}},
+    {"id": "skip-ukey", "action": "playwright.click",
+     "args": {"target": "button:has-text('跳过')"}, "on_failure": "continue",
+     "description": "UKey 提示出现就点掉；没有这个按钮时该步失败但不中断（on_failure: continue）"},
+    {"id": "snap-home", "action": "playwright.snapshot", "args": {}, "evidence": ["screenshot"]}
+  ],
+  "assertions": [
+    {"id": "a-home-text", "type": "page_text_contains", "source": "{{ steps.snap-home }}",
+     "expected": "{{ vars.home_text }}", "severity": "critical"}
+  ]
+}"""
+
+
 INSTRUCTIONS = (
     "用例套件校验服务：只接收 JSON 对象中的非空 cases 数组，返回一个 JSON 套件或"
     "固定结构的校验错误。不会读取文件、解析 YAML、执行测试、调用模型或补写业务步骤。"
@@ -82,7 +104,7 @@ INSTRUCTIONS = (
     '`"{{ env.db }}"` 复用 environment.db 对象）。'
     "\n\n可用动作（由 action_catalog 生成，勿手写）：\n"
     f"{render_actions()}"
-    "\n\n运行期铁律（校验只管契约合法；下面这些决定用例在平台上能不能跑过）：\n"
+    "\n\n【运行期铁律（校验管不到，但决定用例在平台上能不能跑过）】\n"
     "1. 每个用例必须自足：平台会在每个用例开始前重建浏览器会话。web 用例要自己 "
     "playwright.navigate 打开页面并处理登录 / 门禁；确实要复用上一个用例的会话时才写 "
     "reuse_session: true。不要假设上一个用例已经登录、或页面已经打开。\n"
@@ -95,8 +117,38 @@ INSTRUCTIONS = (
     "断言取具体字段（如 {{ steps.x.stdout }}），不要拿整个步骤对象去比较。\n"
     "5. 环境信息（被测地址 / 账号 / 凭证）由使用者提供，写进 environment / variables / secrets，"
     "不要编造目标地址；secrets 写真实值，套件文件本身含凭证，不要提交到 Git。\n"
-    "\n返回里的 warnings 是**不阻断**的运行期忠告（缺 navigate、固定睡眠、没有断言 / 证据、"
-    "整对象断言等）：按它改完再交付，能省掉平台上的一次失败运行。"
+    "\n【用例结构】必需 schema_version(=1) / id / title / steps。可选：description、module、"
+    "priority(P0~P3)、tags、environment(至少含 name，常用 base_url/db)、variables、secrets、"
+    "timeout_sec、retry、on_failure(abort|continue)、fixtures、preconditions、postconditions、"
+    "reuse_session。\n"
+    "步骤：必需 id + action；可选 args、description、timeout_sec（默认 30s）、retry、"
+    "retry_delay_ms、on_failure、continue_on_error、expect_failure（负向用例：该步本应失败）、"
+    "evidence（声明后会落一张截图）。\n"
+    "断言：必需 type；顶层断言还需 id；可选 description、message、severity(blocker|critical|major|minor)。\n"
+    "\n【变量引用】只有一种写法 {{ 命名空间.路径 }}：env.* / vars.* / secrets.* / "
+    "steps.<step_id>.<字段>（字段必须是该动作「返回」列里的字段）/ run.id / run.case_id / "
+    "now.iso / now.epoch；支持下标，如 {{ steps.seed.rows[0].id }}。\n"
+    "整个字符串就是一个引用时保留原始类型，所以 credentials 可以写 \"{{ env.db }}\" 把整个对象传进去。\n"
+    "\n【断言类型 -> 必填字段】\n"
+    "equals / contains / exit_code：actual + expected\n"
+    "status_code：actual（如 {{ steps.x.http_status }}）+ expected\n"
+    "response_time：actual + expected（毫秒；可用 args.mode 选比较方式）\n"
+    "json_path：source={{ steps.x }} + args.path（JSONPath）\n"
+    "json_schema：source + args.schema（或 args.schema_file）\n"
+    "page_text_contains：source={{ steps.snap }} + expected（页面可见文本）\n"
+    "element_visible：source={{ steps.x }} + args.target（Playwright 选择器），可选 args.timeout_ms\n"
+    "db_value：actual={{ steps.q.rows[0].列名 }} + expected；可选 args.row / args.column\n"
+    "file_exists：args.path；可选 args.min_bytes\n"
+    "all / any：items（子断言数组）\n"
+    "\n【errors 与 warnings 分别怎么办】\n"
+    "errors = 套件**不合法**：必须按每一项的 path/code 改完，改完才可能生成套件。\n"
+    "warnings = 套件合法、平台也会接受，但**很可能跑不过**（就是下面铁律对应的坑：没自己"
+    "打开页面、固定睡眠、没有断言或证据、断言取整个步骤对象）。它不阻断生成，但你应当先改"
+    "掉再交付：它比「能生成」更接近「能跑过」。\n"
+    "\n【最小可用示例（可直接照抄改；这份示例本身通过校验且零 warnings）】\n"
+    + MINIMAL_EXAMPLE
+    + "\n\n【交付】把返回的 suite 原样存成 .json 交给测试人员上传到 mtp-platform；"
+    "平台接受 {\"cases\": [...]}，也接受本工具的完整返回（会自动取其中的 suite）。"
 )
 
 

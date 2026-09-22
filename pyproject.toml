@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mtp-contracts-mcp"
-version = "0.1.4"
+version = "0.1.5"
 description = "测试用例规范系统：把 contracts-core 暴露为 Streamable HTTP MCP 服务"
 readme = "README.md"
 requires-python = ">=3.11"
