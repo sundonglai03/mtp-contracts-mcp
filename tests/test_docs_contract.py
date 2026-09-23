@@ -28,9 +28,20 @@ def test_documented_minimal_example_builds_without_warnings():
 def test_documented_assertion_table_matches_the_shared_catalog():
     lines = server.INSTRUCTIONS.splitlines()
     for assertion_type in known_types():
-        required = [name.split(".")[-1] for name in ASSERTIONS[assertion_type].requires]
+        spec = ASSERTIONS[assertion_type]
+        required = [name.split(".")[-1] for name in spec.requires]
+        # 「至少给一个」的那几组也要出现在说明里，否则 agent 不知道还有别的写法
+        any_groups = [
+            [name.split(".")[-1] for name in group] for group in spec.requires_any
+        ]
         candidates = [row for row in lines if re.search(rf"\b{assertion_type}\b", row)]
         assert candidates, f"说明书里没有断言 {assertion_type} 的说明"
         assert any(all(key in row for key in required) for row in candidates), (
             f"说明书里 {assertion_type} 的说明没写清必填字段 {required}：{candidates}"
         )
+        for group in any_groups:
+            if not group:
+                continue
+            assert any(
+                any(key in row for key in group) for row in candidates
+            ), f"说明书里 {assertion_type} 的说明没写清「至少一个」字段 {group}：{candidates}"
