@@ -5,7 +5,7 @@ services:
   contracts-mcp:
     container_name: mtp-contracts-mcp
     build: .
-    image: mtp-contracts-mcp:0.1.2
+    image: mtp-contracts-mcp:0.1.14
     ports:
       - "8000:8000"
     environment:
