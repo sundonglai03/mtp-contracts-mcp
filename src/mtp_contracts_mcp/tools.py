@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mtp_contracts.case_validator import SUPPORTED_SCHEMA_VERSIONS, validate_case
+from mtp_contracts.case_validator import SUPPORTED_SCHEMA_VERSIONS, lint_suite, validate_case
 
 
 def _issue(
@@ -137,6 +137,19 @@ def build_suite(cases: Any = None) -> dict[str, Any]:
             else:
                 seen_ids[case_id] = index
         normalized_cases.append(case)
+
+    # 套件级忠告：一个功能点应该是一条用例（同一流程的多个阶段要写成同一条用例的多个步骤）。
+    # 逐用例的 lint 看不到「这 10 条其实是一条流程」，只有把整个 cases 放一起才看得出来。
+    for issue in lint_suite(normalized_cases):
+        warnings.append(
+            _issue(
+                case_index=None,
+                case_id=None,
+                path=issue.path,
+                code=issue.error_code,
+                message=issue.message,
+            )
+        )
 
     if errors:
         return _failure(errors, warnings)
